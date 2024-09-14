@@ -58,7 +58,7 @@ impl Backend {
         if message_type == "group" && json_object.group_id == Some(946085440) {
             if msg == "/stat" {
                 let status_object: Value =
-                    self.send_get_request(&format!("{}/qo/download/status", API_ENDPOINT)).await?;
+                    self.send_get_request(&format!("{}/qo/download/status", *API_ENDPOINT)).await?;
 
                 if status_object["code"] == 0 {
                     self.send_message(&format!(
@@ -89,7 +89,7 @@ impl Backend {
                     let result: Value = self
                         .send_get_request(&format!(
                             "http://{}/qo/upload/confirmation?token={}&uid={}",
-                            API_ENDPOINT, msg_seg[1], user_id
+                            *API_ENDPOINT, msg_seg[1], user_id
                         ))
                         .await?;
                     if result["result"].as_bool().unwrap_or(false) {
@@ -119,7 +119,7 @@ impl Backend {
     }
 
     async fn send_message(&self, message: &str) -> Result<(), Box<dyn Error>> {
-        let rock_endpoint =  &format!("http://{}/", ROCK_ENDPOINT);
+        let rock_endpoint =  &format!("http://{}/", *ROCK_ENDPOINT);
         println!("发送消息: {}", message);
 
         let segment = QSegmentConstructor::create(Types::Plain, message);
@@ -147,7 +147,7 @@ impl Backend {
     async fn qclient(&self, message: String) -> Result<(), Box<dyn Error>> {
         let client = Client::new();
         let response = client
-            .post(&format!("http://{}/qo/msglist/upload", API_ENDPOINT))
+            .post(&format!("http://{}/qo/msglist/upload", *API_ENDPOINT))
             .body(message)
             .send()
             .await?;
