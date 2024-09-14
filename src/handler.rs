@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::error::Error;
 use actix_web::HttpResponse;
-use crate::dotenv_tools::{read, API_ENDPOINT, ROCK_ENDPOINT};
+use crate::dotenv_tools::{read, API_ENDPOINT, ROCK_ENDPOINT, ROCK_TOKEN};
 use crate::qsegment_constructor::{QSegmentConstructor, Types};
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +119,7 @@ impl Backend {
     }
 
     async fn send_message(&self, message: &str) -> Result<(), Box<dyn Error>> {
-        let rock_endpoint =  &format!("http://{}/send_group_msg?access_token={}", *ROCK_ENDPOINT, );
+        let rock_endpoint =  &format!("http://{}/send_group_msg?access_token={}", *ROCK_ENDPOINT, *ROCK_TOKEN);
         let segment = QSegmentConstructor::create(Types::Plain, message);
         let result = QSegmentConstructor::factory(vec![segment]);
 
