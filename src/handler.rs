@@ -119,9 +119,7 @@ impl Backend {
     }
 
     async fn send_message(&self, message: &str) -> Result<(), Box<dyn Error>> {
-        let rock_endpoint =  &format!("http://{}/", *ROCK_ENDPOINT);
-        println!("发送消息: {}", message);
-
+        let rock_endpoint =  &format!("http://{}/send_group_msg?access_token={}", *ROCK_ENDPOINT, );
         let segment = QSegmentConstructor::create(Types::Plain, message);
         let result = QSegmentConstructor::factory(vec![segment]);
 

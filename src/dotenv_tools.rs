@@ -9,3 +9,4 @@ pub fn read(input: &str) -> String {
 
 pub static API_ENDPOINT: Lazy<String> = Lazy::new(|| read("API_ENDPOINT"));
 pub static ROCK_ENDPOINT: Lazy<String> = Lazy::new(|| read("ROCK_ENDPOINT"));
+pub static ROCK_TOKEN: Lazy<String> = Lazy::new(|| read("ROCK_TOKEN"));
