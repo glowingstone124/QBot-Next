@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::error::Error;
 use actix_web::HttpResponse;
 use crate::dotenv_tools::{read, API_ENDPOINT, ROCK_ENDPOINT, ROCK_TOKEN};
+use crate::networking;
 use crate::qsegment_constructor::{QSegmentConstructor, Types};
 
 #[derive(Debug, Deserialize)]
@@ -13,18 +14,18 @@ struct Sender {
     card: String,
 }
 #[derive(Debug, Deserialize)]
-struct Message {
+pub struct Message {
     message_type: String,
     raw_message: String,
     sender: Sender,
     group_id: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct QMessage {
-    group_id: u64,
-    message: String,
-    auto_escape: bool,
+#[derive(Debug, Deserialize, Serialize)]
+pub struct QMessage {
+    pub(crate) group_id: u64,
+    pub(crate) message: Value,
+    pub(crate) auto_escape: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,82 +57,84 @@ impl Backend {
         println!("{} 消息： {} 发送了 {}", message_type, user_id, msg);
 
         if message_type == "group" && json_object.group_id == Some(946085440) {
-            if msg == "/stat" {
-                let status_object: Value =
-                    self.send_get_request(&format!("{}/qo/download/status", *API_ENDPOINT)).await?;
-
-                if status_object["code"] == 0 {
-                    self.send_message(&format!(
-                        "服务器当前mspt: {}\n服务器当前在线人数: {}",
-                        status_object["mspt_3s"], status_object["onlinecount"]
-                    )).await?;
-                } else {
-                    self.send_message("服务器当前不在线").await?;
-                }
-            } else if msg == "喵喵喵？" {
-                self.send_message("喵喵，喵 >_<，我是主人的星怒喵").await?;
-            } else if msg.starts_with("-testconnection") {
-                let msg_seg: Vec<&str> = msg.split_whitespace().collect();
-                if msg_seg.len() == 2 {
-                    let mut url = msg_seg[1].to_string();
-                    if !url.starts_with("http://") && !url.starts_with("https://") {
-                        self.send_message("请添加https://或者http://前缀，默认使用http请求。").await?;
-                        url = format!("http://{}", url);
-                    }
-                    match self.send_get_request(&url).await {
-                        Ok(_) => self.send_message("成功！").await?,
-                        Err(_) => self.send_message("指定的地址连通性测试：失败！").await?,
-                    }
-                }
-            } else if msg.starts_with("/approve-register") {
-                let msg_seg: Vec<&str> = msg.split_whitespace().collect();
-                if msg_seg.len() == 2 {
-                    let result: Value = self
-                        .send_get_request(&format!(
-                            "http://{}/qo/upload/confirmation?token={}&uid={}",
-                            *API_ENDPOINT, msg_seg[1], user_id
-                        ))
-                        .await?;
-                    if result["result"].as_bool().unwrap_or(false) {
-                        self.send_message("验证成功").await?;
+            match msg.as_str() {
+                "/stat" => {
+                    let status_object = self.get_server_status().await?;
+                    if status_object["code"] == 0 {
+                        networking::send_message(&format!(
+                            "服务器当前mspt: {}\n服务器当前在线人数: {}",
+                            status_object["mspt_3s"], status_object["onlinecount"]
+                        )).await?;
                     } else {
-                        self.send_message("验证失败，可能qq号不正确").await?;
+                        networking::send_message("服务器当前不在线").await?;
                     }
                 }
-            } else {
-                let message = self.generate_credential(&format!(
-                    "<{}|{}>:{}",
-                    if group_name.is_empty() { name } else { group_name },
-                    user_id,
-                    msg
-                ));
-                self.qclient(message).await?;
+                "喵喵喵？" => {
+                    networking::send_message("喵喵，喵 >_<，我是主人的星怒喵").await?;
+                }
+                "@Bot 你是谁？" => {
+                    networking::send_message("Working with Rust and actix.").await.expect("Panic");
+                }
+                msg if msg.starts_with("-testconnection") => {
+                    self.handle_connection_test(msg).await?;
+                }
+                msg if msg.starts_with("/approve-register") => {
+                    self.handle_approve_register(msg, user_id).await?;
+                }
+                _ => {
+                    let message = self.generate_credential(&format!(
+                        "<{}|{}>:{}",
+                        if group_name.is_empty() { name } else { group_name },
+                        user_id,
+                        msg
+                    ));
+                    self.qclient(message).await?;
+                }
             }
         }
 
         Ok(())
     }
 
-    async fn send_get_request(&self, url: &str) -> Result<Value, Box<dyn Error>> {
-        let client = Client::new();
-        let response = client.get(url).send().await?.json::<Value>().await?;
-        Ok(response)
+    async fn get_server_status(&self) -> Result<Value, Box<dyn Error>> {
+        let status_url = format!("{}/qo/download/status", *API_ENDPOINT);
+        networking::send_get_request(&status_url).await
     }
 
-    async fn send_message(&self, message: &str) -> Result<(), Box<dyn Error>> {
-        let rock_endpoint =  &format!("http://{}/send_group_msg?access_token={}", *ROCK_ENDPOINT, *ROCK_TOKEN);
-        let segment = QSegmentConstructor::create(Types::Plain, message);
-        let result = QSegmentConstructor::factory(vec![segment]);
-
-        let client = Client::new();
-        client
-            .post(rock_endpoint)
-            .json(&result)
-            .send()
-            .await?;
-
+    async fn handle_connection_test(&self, msg: &str) -> Result<(), Box<dyn Error>> {
+        let msg_seg: Vec<&str> = msg.split_whitespace().collect();
+        if msg_seg.len() == 2 {
+            let mut url = msg_seg[1].to_string();
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                networking::send_message("请添加https://或者http://前缀，默认使用http请求。").await?;
+                url = format!("http://{}", url);
+            }
+            match networking::send_get_request(&url).await {
+                Ok(_) => networking::send_message("成功！").await?,
+                Err(_) => networking::send_message("指定的地址连通性测试：失败！").await?,
+            }
+        }
         Ok(())
     }
+
+    async fn handle_approve_register(&self, msg: &str, user_id: u64) -> Result<(), Box<dyn Error>> {
+        let msg_seg: Vec<&str> = msg.split_whitespace().collect();
+        if msg_seg.len() == 2 {
+            let confirm_url = format!(
+                "http://{}/qo/upload/confirmation?token={}&uid={}",
+                *API_ENDPOINT, msg_seg[1], user_id
+            );
+            let result: Value = networking::send_get_request(&confirm_url).await?;
+            if result["result"].as_bool().unwrap_or(false) {
+                networking::send_message("验证成功").await?;
+            } else {
+                networking::send_message("验证失败，可能qq号不正确").await?;
+            }
+        }
+        Ok(())
+    }
+
+
 
     fn generate_credential(&self, message: &str) -> String {
         let credential = Credential {

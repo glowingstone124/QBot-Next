@@ -1,7 +1,9 @@
 mod handler;
 mod qsegment_constructor;
 mod dotenv_tools;
+mod networking;
 
+use std::thread;
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
 
@@ -14,17 +16,25 @@ struct BasicResponse {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("Server starting on port 9912");
-    HttpServer::new(move || {
-        App::new()
-            .service(
-                web::resource("/upload")
-                    .route(web::post().to(handler::Backend::handle_input)),
-            )
-            .route("/", web::get().to(index))
-    })
-        .bind("0.0.0.0:9912")?
-        .run()
-        .await
+    thread::spawn(|| {
+        let server = HttpServer::new(|| {
+            App::new()
+                .service(
+                    web::resource("/upload")
+                        .route(web::post().to(handler::Backend::handle_input)),
+                )
+                .route("/", web::get().to(index))
+        })
+            .bind("0.0.0.0:9912")
+            .expect("Failed to bind port")
+            .run();
+
+        let sys = actix_rt::System::new();
+        sys.block_on(server).unwrap();
+    }).join().expect("Panic!");
+    println!("Server now running.");
+    networking::send_message("QBot启动成功。");
+    Ok(())
 }
 
 async fn index() -> HttpResponse {
