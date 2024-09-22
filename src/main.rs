@@ -33,7 +33,6 @@ async fn main() -> std::io::Result<()> {
         sys.block_on(server).unwrap();
     }).join().expect("Panic!");
     println!("Server now running.");
-    networking::send_message("QBot启动成功。");
     Ok(())
 }
 
